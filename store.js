@@ -482,44 +482,62 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
         if (totalPages <= 1) return;
 
-        // Previous button
-        const prevLi = document.createElement('li');
-        prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
-        prevLi.innerHTML = `<button class="page-link">&larr;</button>`;
-        prevLi.addEventListener('click', () => { 
-            if (currentPage > 1) { 
-                currentPage--; 
-                renderProducts(); 
-                document.getElementById('product-container').scrollIntoView({behavior: "smooth"}); 
-            }
-        });
-        paginationContainer.appendChild(prevLi);
-
-        // Page numbers
-        for (let i = 1; i <= totalPages; i++) {
+        const createPageItem = (pageNum, text, isActive = false, isDisabled = false) => {
             const li = document.createElement('li');
-            li.className = `page-item ${i === currentPage ? 'active' : ''}`;
-            li.innerHTML = `<button class="page-link">${i}</button>`;
-            li.addEventListener('click', () => { 
-                currentPage = i; 
-                renderProducts(); 
-                document.getElementById('product-container').scrollIntoView({behavior: "smooth"}); 
-            });
-            paginationContainer.appendChild(li);
+            li.className = `page-item ${isActive ? 'active' : ''} ${isDisabled ? 'disabled' : ''}`;
+            const btn = document.createElement('button');
+            btn.className = 'page-link';
+            btn.innerHTML = text;
+            
+            if (!isDisabled && !isActive) {
+                btn.addEventListener('click', () => {
+                    currentPage = pageNum;
+                    renderProducts();
+                    document.getElementById('product-container').scrollIntoView({behavior: "smooth"}); 
+                });
+            }
+            li.appendChild(btn);
+            return li;
+        };
+
+        // Previous button
+        paginationContainer.appendChild(createPageItem(currentPage - 1, '&larr;', false, currentPage === 1));
+
+        // Logic for sliding window pagination
+        const delta = 2; // How many pages to show around current page
+        let range = [];
+        let rangeWithDots = [];
+        let l;
+
+        for (let i = 1; i <= totalPages; i++) {
+            if (i == 1 || i == totalPages || i >= currentPage - delta && i < currentPage + delta + 1) {
+                range.push(i);
+            }
         }
 
-        // Next button
-        const nextLi = document.createElement('li');
-        nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
-        nextLi.innerHTML = `<button class="page-link">&rarr;</button>`;
-        nextLi.addEventListener('click', () => { 
-            if (currentPage < totalPages) { 
-                currentPage++; 
-                renderProducts(); 
-                document.getElementById('product-container').scrollIntoView({behavior: "smooth"}); 
+        for (let i of range) {
+            if (l) {
+                if (i - l === 2) {
+                    rangeWithDots.push(l + 1);
+                } else if (i - l !== 1) {
+                    rangeWithDots.push('...');
+                }
+            }
+            rangeWithDots.push(i);
+            l = i;
+        }
+
+        // Render page numbers
+        rangeWithDots.forEach(i => {
+            if (i === '...') {
+                paginationContainer.appendChild(createPageItem(null, '...', false, true));
+            } else {
+                paginationContainer.appendChild(createPageItem(i, i, i === currentPage, false));
             }
         });
-        paginationContainer.appendChild(nextLi);
+
+        // Next button
+        paginationContainer.appendChild(createPageItem(currentPage + 1, '&rarr;', false, currentPage === totalPages));
     }
 
     // 4. Cart Logic

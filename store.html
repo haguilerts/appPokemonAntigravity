@@ -39,7 +39,7 @@
 
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0 fw-bold d-flex align-items-center">
                     <li class="nav-item">
-                        <a class="nav-link text-white mx-2" href="#">Tienda</a>
+                        <a class="nav-link text-white mx-2" href="store.html">Tienda</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link text-white mx-2" href="#">Torneos</a>
@@ -103,28 +103,100 @@
         </button>
     </div>
 
-    <!-- Product Grid -->
+    <!-- Product Store Layout -->
     <div class="container my-5">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4 class="mb-0 fw-bold">Cartas Disponibles <span class="badge bg-secondary ms-2" id="total-count-badge" style="font-size: 0.9rem;">0 total</span></h4>
-            
-            <div class="d-flex align-items-center">
-                <div class="btn-group me-3" role="group" aria-label="View toggle">
-                    <input type="radio" class="btn-check" name="view-options" id="view-grid" autocomplete="off" checked>
-                    <label class="btn btn-outline-dark" for="view-grid"><i class="bi bi-grid-fill"></i></label>
+        <div class="row">
+            <!-- Sidebar Filters -->
+            <div class="col-md-3 pe-md-4 mb-4">
+                <h5 class="fw-bold mb-4">Filtrar por</h5>
 
-                    <input type="radio" class="btn-check" name="view-options" id="view-list" autocomplete="off">
-                    <label class="btn btn-outline-dark" for="view-list"><i class="bi bi-list-ul"></i></label>
+                <!-- Buscador -->
+                <div class="mb-4 position-relative">
+                    <div class="input-group search-group">
+                        <input type="text" class="form-control border-end-0 autocomplete-input" id="sidebar-search" placeholder="Buscar Pokémon..." autocomplete="off">
+                        <span class="input-group-text bg-white bg-transparent text-muted border-start-0"><i class="bi bi-search"></i></span>
+                    </div>
+                    <ul class="dropdown-menu w-100 shadow-sm border-0 mt-1" id="autocomplete-dropdown" style="position: absolute; top: 100%; left: 0; z-index: 1050; border-radius: 0 0 8px 8px;">
+                        <!-- Suggestions will be injected here -->
+                    </ul>
+                </div>
+                
+                <!-- Idioma (Toggle Switch) -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">Idioma</h6>
+                    <div class="switch-container">
+                        <span class="switch-label active" id="label-en">EN</span>
+                        <label class="switch">
+                            <input type="checkbox" id="lang-switch">
+                            <span class="slider"></span>
+                        </label>
+                        <span class="switch-label" id="label-es">ES</span>
+                    </div>
                 </div>
 
-                <div class="pagination-controls">
-                    <button class="btn btn-outline-dark me-2" id="btn-prev" disabled><i class="bi bi-arrow-left"></i> Anterior</button>
-                    <button class="btn btn-outline-dark" id="btn-next" disabled>Siguiente <i class="bi bi-arrow-right"></i></button>
+                <!-- Precio -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-3">Precio</h6>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-5">
+                            <label class="form-label small text-muted mb-1">Desde</label>
+                            <input type="number" class="form-control" id="filter-price-min" placeholder="0">
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label small text-muted mb-1">Hasta</label>
+                            <input type="number" class="form-control" id="filter-price-max" placeholder="999999">
+                        </div>
+                        <div class="col-2">
+                            <button class="btn btn-outline-secondary w-100 px-0" id="btn-apply-price"><i class="bi bi-chevron-right"></i></button>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4" id="product-container">
-            <!-- Products will be dynamically injected here -->
+
+            <!-- Main Content -->
+            <div class="col-md-9">
+                <!-- Top Bar (Active filters, Sort, Views) -->
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom">
+                    <!-- Active Filters -->
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3 mb-md-0" id="active-filters-container">
+                        <!-- Chips will be injected here -->
+                        <button class="btn btn-link text-dark text-decoration-none fw-bold p-0 ms-2 d-none" id="btn-clear-filters">Borrar filtros</button>
+                    </div>
+
+                    <!-- Sort and View -->
+                    <div class="d-flex align-items-center gap-3 ms-auto">
+                        <select class="form-select w-auto fw-bold" id="sort-select" style="min-width: 200px;">
+                            <option value="default">Más vendidos</option>
+                            <option value="price-asc">Precio: menor a mayor</option>
+                            <option value="price-desc">Precio: mayor a menor</option>
+                            <option value="name-asc">A - Z</option>
+                            <option value="name-desc">Z - A</option>
+                        </select>
+
+                        <div class="btn-group" role="group" aria-label="View toggle">
+                            <input type="radio" class="btn-check" name="view-options" id="view-grid" autocomplete="off" checked>
+                            <label class="btn btn-outline-dark" for="view-grid"><i class="bi bi-grid-fill"></i></label>
+
+                            <input type="radio" class="btn-check" name="view-options" id="view-list" autocomplete="off">
+                            <label class="btn btn-outline-dark" for="view-list"><i class="bi bi-list-ul"></i></label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3 text-muted small"><span id="total-count-badge">0</span> productos encontrados</div>
+
+                <!-- Products Grid -->
+                <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-4 mb-5" id="product-container">
+                    <!-- Products will be dynamically injected here -->
+                </div>
+
+                <!-- Numbered Pagination -->
+                <nav aria-label="Page navigation" class="mb-5">
+                    <ul class="pagination justify-content-center custom-pagination" id="pagination-container">
+                        <!-- Pagination buttons injected here -->
+                    </ul>
+                </nav>
+            </div>
         </div>
     </div>
 

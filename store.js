@@ -4,7 +4,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Check Authentication
     const currentUserStr = localStorage.getItem('currentUser');
     if (!currentUserStr) {
-        // Not logged in, redirect to login page
         window.location.href = 'index.html';
         return;
     }
@@ -26,18 +25,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 2. Product Data (Fetched from PokeAPI)
-    let products = [];
-    let currentOffset = 0;
-    const limit = 8;
-    let totalCount = 0;
+    // 2. Product Data & State
+    let allProducts = [];
+    let filteredProducts = [];
+    let currentPage = 1;
+    const itemsPerPage = 8;
     let currentView = 'grid'; // 'grid' or 'list'
 
-    const btnPrev = document.getElementById('btn-prev');
-    const btnNext = document.getElementById('btn-next');
     const totalCountBadge = document.getElementById('total-count-badge');
     const viewGridBtn = document.getElementById('view-grid');
     const viewListBtn = document.getElementById('view-list');
+    const sortSelect = document.getElementById('sort-select');
+    const productContainer = document.getElementById('product-container');
 
     if (viewGridBtn) {
         viewGridBtn.addEventListener('change', () => {
@@ -52,98 +51,255 @@ document.addEventListener('DOMContentLoaded', () => {
             renderProducts();
         });
     }
+    
+    if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+            applySort();
+            renderProducts();
+        });
+    }
 
-    async function fetchProducts(offset = 0) {
-        const productContainer = document.getElementById('product-container');
+    async function fetchAllProducts() {
         if (productContainer) {
-            productContainer.innerHTML = '<div class="col-12 text-center my-5"><div class="spinner-border text-secondary" role="status"></div><p class="mt-2 text-muted">Cargando cartas...</p></div>';
+            productContainer.innerHTML = '<div class="col-12 text-center my-5"><div class="spinner-border text-secondary" role="status"></div><p class="mt-2 text-muted">Cargando catálogo...</p></div>';
         }
-        
-        if (btnPrev) btnPrev.disabled = true;
-        if (btnNext) btnNext.disabled = true;
 
         try {
-            const response = await fetch(`https://pokeapi.co/api/v2/pokemon?offset=${offset}&limit=${limit}`);
+            // Fetch 80 products for the local catalog
+            const response = await fetch(`https://pokeapi.co/api/v2/pokemon?offset=0&limit=80`);
             const data = await response.json();
             
-            totalCount = data.count;
-            if (totalCountBadge) {
-                totalCountBadge.textContent = `${totalCount} en total`;
-            }
-            
-            const fetchPromises = data.results.map(async (pokemon, index) => {
+            const fetchPromises = data.results.map(async (pokemon) => {
                 const pokeRes = await fetch(pokemon.url);
                 const pokeData = await pokeRes.json();
                 
-                // Generamos un precio y stock aleatorio para la tienda
-                const basePrice = (pokeData.base_experience || 100) * 1000;
+                const basePrice = (pokeData.base_experience || 100) * 1;
                 const type = pokeData.types.length > 0 ? pokeData.types[0].type.name : 'normal';
+                const name = pokemon.name.charAt(0).toUpperCase() + pokemon.name.slice(1);
                 
                 return {
                     id: pokeData.id,
-                    title: pokemon.name.charAt(0).toUpperCase() + pokemon.name.slice(1) + " Card",
-                    description: `Excelente carta tipo ${type}.`,
-                    date: "Disponible el " + new Date().toLocaleDateString('es-AR'),
+                    titleEn: name + " Card",
+                    titleEs: name + " Carta",
+                    descEn: `Excellent ${type} type card.`,
+                    descEs: `Excelente carta tipo ${type}.`,
+                    dateEn: "Available June 26, 2026 at 00:00",
+                    dateEs: "Disponible el 26 de junio de 2026 a las 00:00",
                     priceOriginal: basePrice,
                     priceCash: Math.floor(basePrice * 0.9), // 10% discount
-                    stock: Math.floor(Math.random() * 20) + 1,
+                    stock: (pokeData.id % 20) + 1,
                     image: pokeData.sprites.other['official-artwork'].front_default || pokeData.sprites.front_default,
-                    sale: Math.random() > 0.7
+                    sale: (pokeData.id % 3) === 0
                 };
             });
             
-            products = await Promise.all(fetchPromises);
-            renderProducts();
-            renderCarousel();
+            allProducts = await Promise.all(fetchPromises);
             
-            if (btnPrev) btnPrev.disabled = offset === 0;
-            if (btnNext) btnNext.disabled = offset + limit >= totalCount;
+            // Initial render flow
+            applyFilters();
+            renderCarousel();
 
         } catch (error) {
             console.error("Error fetching from PokeAPI", error);
-            const productContainer = document.getElementById('product-container');
             if (productContainer) {
                 productContainer.innerHTML = '<div class="col-12 text-center text-danger my-5">Error cargando cartas. Por favor, intenta de nuevo.</div>';
             }
         }
     }
 
-    if (btnPrev) {
-        btnPrev.addEventListener('click', () => {
-            if (currentOffset >= limit) {
-                currentOffset -= limit;
-                fetchProducts(currentOffset);
+    // Filters Logic
+    function applyFilters() {
+        const langSwitch = document.getElementById('lang-switch');
+        const isEsp = langSwitch ? langSwitch.checked : false;
+        const minPrice = parseFloat(document.getElementById('filter-price-min')?.value) || 0;
+        const maxPrice = parseFloat(document.getElementById('filter-price-max')?.value) || 9999999;
+        const searchTerm = document.getElementById('sidebar-search')?.value.toLowerCase() || '';
+
+        filteredProducts = allProducts.filter(p => {
+            const activeTitle = isEsp ? p.titleEs : p.titleEn;
+
+            // Search
+            if (searchTerm && !activeTitle.toLowerCase().includes(searchTerm)) return false;
+
+            // Price
+            if (p.priceCash < minPrice || p.priceCash > maxPrice) return false;
+            
+            return true;
+        });
+
+        currentPage = 1;
+        applySort();
+        renderProducts();
+        updateActiveFiltersUI();
+    }
+
+    function applySort() {
+        const sortVal = document.getElementById('sort-select')?.value || 'default';
+        const langSwitch = document.getElementById('lang-switch');
+        const isEsp = langSwitch ? langSwitch.checked : false;
+        
+        filteredProducts.sort((a, b) => {
+            const aTitle = isEsp ? a.titleEs : a.titleEn;
+            const bTitle = isEsp ? b.titleEs : b.titleEn;
+
+            switch(sortVal) {
+                case 'price-asc': return a.priceCash - b.priceCash;
+                case 'price-desc': return b.priceCash - a.priceCash;
+                case 'name-asc': return aTitle.localeCompare(bTitle);
+                case 'name-desc': return bTitle.localeCompare(aTitle);
+                default: return a.id - b.id; // 'default' / Más vendidos
             }
         });
     }
 
-    if (btnNext) {
-        btnNext.addEventListener('click', () => {
-            if (currentOffset + limit < totalCount) {
-                currentOffset += limit;
-                fetchProducts(currentOffset);
-            }
-        });
+    function updateActiveFiltersUI() {
+        const container = document.getElementById('active-filters-container');
+        const clearBtn = document.getElementById('btn-clear-filters');
+        if (!container || !clearBtn) return;
+        
+        // Remove existing chips
+        container.querySelectorAll('.filter-chip').forEach(e => e.remove());
+        
+        let hasFilters = false;
+
+        const addChip = (text, callback) => {
+            hasFilters = true;
+            const chip = document.createElement('div');
+            chip.className = 'filter-chip';
+            chip.innerHTML = `${text} <span class="close-chip">&times;</span>`;
+            chip.querySelector('.close-chip').addEventListener('click', callback);
+            container.insertBefore(chip, clearBtn);
+        };
+        
+        const minPrice = document.getElementById('filter-price-min')?.value;
+        const maxPrice = document.getElementById('filter-price-max')?.value;
+        if (minPrice || maxPrice) {
+            let txt = '';
+            if (minPrice && maxPrice) txt = `$${minPrice} - $${maxPrice}`;
+            else if (minPrice) txt = `Desde $${minPrice}`;
+            else if (maxPrice) txt = `Hasta $${maxPrice}`;
+            
+            addChip(txt, () => { 
+                document.getElementById('filter-price-min').value = '';
+                document.getElementById('filter-price-max').value = '';
+                applyFilters(); 
+            });
+        }
+
+        clearBtn.classList.toggle('d-none', !hasFilters);
     }
 
-    // 3. Render Products
-    const productContainer = document.getElementById('product-container');
+    // Event listeners for filters
+    const langSwitch = document.getElementById('lang-switch');
+    const labelEn = document.getElementById('label-en');
+    const labelEs = document.getElementById('label-es');
     
+    if (langSwitch) {
+        langSwitch.addEventListener('change', () => {
+            if (langSwitch.checked) {
+                labelEs.classList.add('active');
+                labelEn.classList.remove('active');
+            } else {
+                labelEn.classList.add('active');
+                labelEs.classList.remove('active');
+            }
+            applyFilters();
+        });
+    }
+
+    document.getElementById('btn-apply-price')?.addEventListener('click', applyFilters);
+    document.getElementById('btn-clear-filters')?.addEventListener('click', () => {
+        document.getElementById('filter-price-min').value = '';
+        document.getElementById('filter-price-max').value = '';
+        const searchInput = document.getElementById('sidebar-search');
+        if (searchInput) searchInput.value = '';
+        applyFilters();
+    });
+
+    // Sidebar Autocomplete Search
+    const sidebarSearch = document.getElementById('sidebar-search');
+    const autocompleteDropdown = document.getElementById('autocomplete-dropdown');
+
+    if (sidebarSearch && autocompleteDropdown) {
+        sidebarSearch.addEventListener('input', (e) => {
+            const val = e.target.value.toLowerCase();
+            const langSwitch = document.getElementById('lang-switch');
+            const isEsp = langSwitch ? langSwitch.checked : false;
+            autocompleteDropdown.innerHTML = '';
+            
+            if (val.length === 0) {
+                autocompleteDropdown.style.display = 'none';
+                applyFilters();
+                return;
+            }
+
+            const matches = allProducts.filter(p => {
+                const activeTitle = isEsp ? p.titleEs : p.titleEn;
+                return activeTitle.toLowerCase().includes(val);
+            });
+            const topMatches = matches.slice(0, 6);
+
+            if (topMatches.length > 0) {
+                topMatches.forEach(match => {
+                    const activeTitle = isEsp ? match.titleEs : match.titleEn;
+                    const li = document.createElement('li');
+                    li.innerHTML = `<div class="autocomplete-item"><i class="bi bi-search"></i> ${activeTitle}</div>`;
+                    li.addEventListener('click', () => {
+                        sidebarSearch.value = activeTitle;
+                        autocompleteDropdown.style.display = 'none';
+                        applyFilters();
+                    });
+                    autocompleteDropdown.appendChild(li);
+                });
+                autocompleteDropdown.style.display = 'block';
+            } else {
+                autocompleteDropdown.style.display = 'none';
+            }
+            
+            applyFilters();
+        });
+
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!sidebarSearch.contains(e.target) && !autocompleteDropdown.contains(e.target)) {
+                autocompleteDropdown.style.display = 'none';
+            }
+        });
+    }
+
+    // Top navbar search (fallback)
+    const topSearchInput = document.querySelector('.search-form input[type="search"]');
+    if (topSearchInput) {
+        topSearchInput.addEventListener('input', (e) => {
+            if (sidebarSearch) sidebarSearch.value = e.target.value;
+            applyFilters();
+        });
+    }
+
+
+    // 3. Render Views
     function renderCarousel() {
         const carouselInner = document.getElementById('carousel-inner-container');
         if (!carouselInner) return;
         
         carouselInner.innerHTML = '';
         
-        products.forEach((product, index) => {
+        // Use top 5 products for carousel
+        const topProducts = allProducts.slice(0, 5);
+        const langSwitch = document.getElementById('lang-switch');
+        const isEsp = langSwitch ? langSwitch.checked : false;
+        const txtDestacado = isEsp ? "¡Destacado!" : "Featured!";
+        
+        topProducts.forEach((product, index) => {
+            const activeTitle = isEsp ? product.titleEs : product.titleEn;
             const itemDiv = document.createElement('div');
             itemDiv.className = `carousel-item ${index === 0 ? 'active' : ''}`;
             
             itemDiv.innerHTML = `
-                <img src="${product.image}" class="d-block w-100" alt="${product.title}">
+                <img src="${product.image}" class="d-block w-100" alt="${activeTitle}">
                 <div class="carousel-caption-custom">
-                    <h3 class="fw-bold mb-0">${product.title}</h3>
-                    <p class="mb-0 fs-5 text-warning">¡Destacado!</p>
+                    <h3 class="fw-bold mb-0">${activeTitle}</h3>
+                    <p class="mb-0 fs-5 text-warning">${txtDestacado}</p>
                 </div>
             `;
             carouselInner.appendChild(itemDiv);
@@ -154,9 +310,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!productContainer) return;
         productContainer.innerHTML = '';
 
+        if (totalCountBadge) {
+            totalCountBadge.textContent = filteredProducts.length;
+        }
+
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const currentProducts = filteredProducts.slice(startIndex, endIndex);
+
+        const langSwitch = document.getElementById('lang-switch');
+        const isEsp = langSwitch ? langSwitch.checked : false;
+
+        if (currentProducts.length === 0) {
+            const noResultsTxt = isEsp ? "No se encontraron productos con estos filtros." : "No products found with these filters.";
+            productContainer.innerHTML = `<div class="col-12 text-center my-5 text-muted">${noResultsTxt}</div>`;
+            renderPagination();
+            return;
+        }
+
         if (currentView === 'grid') {
-            productContainer.className = 'row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4';
-            products.forEach(product => {
+            productContainer.className = 'row row-cols-1 row-cols-sm-2 row-cols-md-3 g-4 mb-5';
+            currentProducts.forEach(product => {
+                const activeTitle = isEsp ? product.titleEs : product.titleEn;
+                const activeDesc = isEsp ? product.descEs : product.descEn;
+                const activeDate = isEsp ? product.dateEs : product.dateEn;
+                const txtCash = isEsp ? "En efectivo" : "Cash";
+                const txtStock = isEsp ? "Stock disponible" : "Available Stock";
+                const txtBuy = isEsp ? "Precómpralo ahora" : "Pre-order now";
+                const txtSale = isEsp ? "¡Oferta!" : "Sale!";
+                
                 const col = document.createElement('div');
                 col.className = 'col';
 
@@ -164,28 +346,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? `<div class="price-original">$ ${product.priceOriginal.toLocaleString('es-AR')}</div>` 
                     : '';
                     
-                const saleBadgeHtml = product.sale ? `<div class="sale-badge">¡Oferta!</div>` : '';
+                const saleBadgeHtml = product.sale ? `<div class="sale-badge">${txtSale}</div>` : '';
 
                 col.innerHTML = `
                     <div class="card product-card">
                         <div class="product-img-container">
                             ${saleBadgeHtml}
-                            <img src="${product.image}" alt="${product.title}">
+                            <a href="product.html?id=${product.id}">
+                                <img src="${product.image}" alt="${activeTitle}">
+                            </a>
                         </div>
                         <div class="card-body">
-                            <div class="product-date">${product.date}</div>
-                            <div class="product-title">${product.title}</div>
-                            <div class="product-description text-muted small mb-2">${product.description}</div>
+                            <div class="product-date">${activeDate}</div>
+                            <div class="product-title"><a href="product.html?id=${product.id}" class="text-decoration-none text-dark">${activeTitle}</a></div>
+                            <div class="product-description text-muted small mb-2">${activeDesc}</div>
                             ${originalPriceHtml}
-                            <div class="price-cash">En efectivo: $ ${product.priceCash.toLocaleString('es-AR')}</div>
-                            <div class="stock-info">Stock disponible: ${product.stock}</div>
+                            <div class="price-cash">${txtCash}: $ ${product.priceCash.toLocaleString('es-AR')}</div>
+                            <div class="stock-info">${txtStock}: ${product.stock}</div>
                             
                             <div class="d-flex align-items-center mb-2 mt-auto">
                                 <button class="btn btn-qty btn-minus" data-id="${product.id}">-</button>
                                 <input type="number" class="form-control qty-input" id="qty-${product.id}" value="1" min="1" max="${product.stock}">
                                 <button class="btn btn-qty btn-plus" data-id="${product.id}">+</button>
                             </div>
-                            <button class="btn btn-preorder w-100" data-id="${product.id}">Precómpralo ahora</button>
+                            <button class="btn btn-preorder w-100" data-id="${product.id}">${txtBuy}</button>
                         </div>
                     </div>
                 `;
@@ -193,22 +377,34 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } else {
             // List View
-            productContainer.className = 'table-responsive w-100';
+            productContainer.className = 'table-responsive w-100 mb-5';
             
             const table = document.createElement('table');
             table.className = 'table table-bordered table-hover align-middle bg-white shadow-sm';
             
+            const txtCode = isEsp ? "CÓDIGO" : "CODE";
+            const txtDesc = isEsp ? "DESCRIPCIÓN" : "DESCRIPTION";
+            const txtUnit = isEsp ? "P. UNITARIO" : "UNIT PRICE";
+            const txtAction = isEsp ? "ACCIONES" : "ACTIONS";
+            const txtStock = isEsp ? "Stock" : "Stock";
+            const txtAdd = isEsp ? "Agregar" : "Add";
+            
             let tbodyHtml = '';
-            products.forEach(product => {
+            currentProducts.forEach(product => {
+                const activeTitle = isEsp ? product.titleEs : product.titleEn;
+                const activeDesc = isEsp ? product.descEs : product.descEn;
+
                 tbodyHtml += `
                     <tr>
                         <td class="text-center fw-bold text-muted">${10000 + product.id}</td>
                         <td>
                             <div class="d-flex align-items-center">
-                                <img src="${product.image}" alt="${product.title}" style="width: 50px; height: 50px; object-fit: contain;" class="me-3">
+                                <a href="product.html?id=${product.id}">
+                                    <img src="${product.image}" alt="${activeTitle}" style="width: 50px; height: 50px; object-fit: contain;" class="me-3">
+                                </a>
                                 <div>
-                                    <div class="fw-bold fs-6">${product.title}</div>
-                                    <small class="text-muted">${product.description} | Stock: ${product.stock}</small>
+                                    <div class="fw-bold fs-6"><a href="product.html?id=${product.id}" class="text-decoration-none text-dark">${activeTitle}</a></div>
+                                    <small class="text-muted">${activeDesc} | ${txtStock}: ${product.stock}</small>
                                 </div>
                             </div>
                         </td>
@@ -220,7 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <input type="number" class="form-control form-control-sm text-center mx-1 qty-input" id="qty-${product.id}" value="1" min="1" max="${product.stock}" style="width: 55px;">
                                     <button class="btn btn-sm btn-light border btn-plus" data-id="${product.id}">+</button>
                                 </div>
-                                <button class="btn btn-sm btn-dark btn-preorder" data-id="${product.id}">Agregar</button>
+                                <button class="btn btn-sm btn-dark btn-preorder" data-id="${product.id}">${txtAdd}</button>
                             </div>
                         </td>
                     </tr>
@@ -230,10 +426,10 @@ document.addEventListener('DOMContentLoaded', () => {
             table.innerHTML = `
                 <thead style="background-color: #f6c08e;">
                     <tr>
-                        <th class="text-center">CODIGO</th>
-                        <th>DESCRIPCION</th>
-                        <th>P. UNITARIO</th>
-                        <th class="text-end">ACCIONES</th>
+                        <th class="text-center">${txtCode}</th>
+                        <th>${txtDesc}</th>
+                        <th>${txtUnit}</th>
+                        <th class="text-end">${txtAction}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -243,6 +439,8 @@ document.addEventListener('DOMContentLoaded', () => {
             
             productContainer.appendChild(table);
         }
+
+        renderPagination();
 
         // Add event listeners for quantity buttons
         document.querySelectorAll('.btn-minus').forEach(btn => {
@@ -266,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Add event listeners for "Precompralo ahora" (Add to cart)
+        // Add event listeners for "Precompralo ahora"
         document.querySelectorAll('.btn-preorder').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = parseInt(e.target.getAttribute('data-id'));
@@ -274,6 +472,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 addToCart(id, qty);
             });
         });
+    }
+
+    function renderPagination() {
+        const paginationContainer = document.getElementById('pagination-container');
+        if (!paginationContainer) return;
+        paginationContainer.innerHTML = '';
+
+        const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+        if (totalPages <= 1) return;
+
+        // Previous button
+        const prevLi = document.createElement('li');
+        prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+        prevLi.innerHTML = `<button class="page-link">&larr;</button>`;
+        prevLi.addEventListener('click', () => { 
+            if (currentPage > 1) { 
+                currentPage--; 
+                renderProducts(); 
+                document.getElementById('product-container').scrollIntoView({behavior: "smooth"}); 
+            }
+        });
+        paginationContainer.appendChild(prevLi);
+
+        // Page numbers
+        for (let i = 1; i <= totalPages; i++) {
+            const li = document.createElement('li');
+            li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+            li.innerHTML = `<button class="page-link">${i}</button>`;
+            li.addEventListener('click', () => { 
+                currentPage = i; 
+                renderProducts(); 
+                document.getElementById('product-container').scrollIntoView({behavior: "smooth"}); 
+            });
+            paginationContainer.appendChild(li);
+        }
+
+        // Next button
+        const nextLi = document.createElement('li');
+        nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+        nextLi.innerHTML = `<button class="page-link">&rarr;</button>`;
+        nextLi.addEventListener('click', () => { 
+            if (currentPage < totalPages) { 
+                currentPage++; 
+                renderProducts(); 
+                document.getElementById('product-container').scrollIntoView({behavior: "smooth"}); 
+            }
+        });
+        paginationContainer.appendChild(nextLi);
     }
 
     // 4. Cart Logic
@@ -286,7 +532,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function addToCart(productId, qty) {
-        const product = products.find(p => p.id === productId);
+        // Use allProducts as the source of truth
+        const product = allProducts.find(p => p.id === productId);
         if (!product) return;
 
         const existingItem = cart.find(item => item.product.id === productId);
@@ -315,7 +562,7 @@ document.addEventListener('DOMContentLoaded', () => {
         saveCart();
     }
 
-    // 5. Update UI
+    // 5. Update UI (Cart)
     const cartCountBadge = document.getElementById('cart-count-badge');
     const cartTotalBadge = document.getElementById('cart-total-badge');
     const cartItemsContainer = document.getElementById('cart-items-container');
@@ -373,7 +620,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Initial render
-    fetchProducts();
+    // Initial load
+    fetchAllProducts();
     updateCartUI();
 });
